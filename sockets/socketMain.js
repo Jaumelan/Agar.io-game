@@ -147,8 +147,31 @@ io.sockets.on("connect", (socket) => {
 
           // Every socket needs to know the leaderBoard has changed
           io.sockets.emit("updateLeaderBoard", getLeaderBoard());
+          // player absorbed, let everyone knows
+          io.sockets.emit("playerDeath", data);
         })
         .catch(() => {});
+    }
+  });
+
+  socket.on("disconnect", (data) => {
+    //console.log(data);
+    // find out who just lef...
+    if (player.playerData) {
+      players.forEach((currPlayer, i) => {
+        //console.log(currPlayer.uid);
+        if (currPlayer.uid == player.playerData.uid) {
+          players.splice(i, 1);
+          io.sockets.emit("updateLeaderBoard", getLeaderBoard());
+        }
+      });
+      const updateStat = `
+      UPDATE stats
+        SET highScore = CASE WHEN highScore < ? THEN ? ELSE highScore END,
+        mostOrbs = CASE WHEN mostOrbs < ? THEN ? ELSE mostOrbs END,
+        mostPlayers = CASE WHEN mostPlayers < ? THEN ? ELSE mostPlayers END
+      WHERE username = ?
+      `;
     }
   });
 });

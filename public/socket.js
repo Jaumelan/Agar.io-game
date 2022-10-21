@@ -47,3 +47,12 @@ socket.on("updateLeaderBoard", (data) => {
     );
   });
 });
+
+socket.on("playerDeath", (data) => {
+  $("#game-message").html(
+    `${data.died.name} absorbed by ${data.killedBy.name}`
+  );
+  $("#game-message").css({ "background-color": "#00e6e6", opacity: 1 });
+  $("#game-message").show();
+  $("#game-message").fadeOut(5000);
+});

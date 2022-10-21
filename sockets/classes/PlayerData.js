@@ -1,7 +1,10 @@
+const uuid = require("uuid");
+
 // Data related to all player, which everyone needs to know about
 
 class PlayerData {
   constructor(playerName, settings) {
+    this.uid = uuid.v4();
     this.name = playerName;
     this.locX = Math.floor(settings.worldWidth * Math.random() + 10);
     this.locY = Math.floor(settings.worldHeight * Math.random() + 10);
