@@ -12,11 +12,11 @@ const checkForPlayerCollisions =
 const Player = require("./classes/Player");
 const PlayerConfig = require("./classes/PlayerConfig");
 const PlayerData = require("./classes/PlayerData");
-
+let tickSent = false;
 let orbs = [];
 let players = [];
 let settings = {
-  defaultOrbs: 500,
+  defaultOrbs: 50,
   defaultSpeed: 6,
   defaultSize: 6,
   //as a player gets bigger, the zoom needs to go out
@@ -34,9 +34,21 @@ function initGame() {
 
 initGame();
 
+// issue a message to every connected socket 30 fps
+setInterval(() => {
+  if (players.length > 0) {
+    if (tickSent) {
+      //console.log(player.playerData.locX);
+      io.to("game").emit("tock", {
+        players,
+      });
+    }
+  }
+}, 33); // there are 30 33s in 1000 miliseconds, or 1/30th of a second
+
 io.sockets.on("connect", (socket) => {
   let player = {};
-  player.tickSent = false;
+
   socket.on("init", (data) => {
     // add the player to the game namespace
     socket.join("game");
@@ -46,17 +58,17 @@ io.sockets.on("connect", (socket) => {
     let playerData = new PlayerData(data.playerName, settings);
     // make a master player object to hold both
     player = new Player(socket.id, playerConfig, playerData);
+    //console.log(player)
 
     // issue a message to every connected socket 30 fps
     setInterval(() => {
-      if (player.tickSent) {
-        //console.log(player.playerData.locX);
-        io.to("game").emit("tock", {
-          players,
-          playerX: player.playerData.locX,
-          playerY: player.playerData.locY,
-        });
-      }
+      //console.log(player.playerData.locX);
+      // issue a message to This client with it's loc 30/sec
+
+      socket.emit("ticktock", {
+        playerX: player.playerData.locX,
+        playerY: player.playerData.locY,
+      });
     }, 33); // there are 30 33s in 1000 miliseconds, or 1/30th of a second
 
     socket.emit("initReturn", {
@@ -68,29 +80,91 @@ io.sockets.on("connect", (socket) => {
 
   // the client sent over a tick. that means that we know what direction to move the socket
   socket.on("tick", (data) => {
-    player.tickSent = true;
-    let speed = player.playerConfig.speed;
+    tickSent = true;
+    if (data.xVector && data.yVector) {
+      let speed = player.playerConfig.speed;
 
-    // update the playerConfig with the new direction in data
-    // and at the same time create a local variable for this callback for readability
-    let xV = (player.playerConfig.xVector = data.xVector);
-    let yV = (player.playerConfig.yVector = data.yVector);
+      // update the playerConfig with the new direction in data
+      // and at the same time create a local variable for this callback for readability
+      player.playerConfig.xVector = data.xVector;
+      player.playerConfig.yVector = data.yVector;
+      let xV = player.playerConfig.xVector;
+      let yV = player.playerConfig.yVector;
 
-    if (
-      (player.playerData.locX < 5 && player.playerData.xVector < 0) ||
-      (player.playerData.locX > 500 && xV > 0)
-    ) {
-      player.playerData.locY -= speed * yV;
-    } else if (
-      (player.playerData.locY < 5 && yV > 0) ||
-      (player.playerData.locY > 500 && yV < 0)
-    ) {
-      player.playerData.locX += speed * xV;
-    } else {
-      player.playerData.locX += speed * xV;
-      player.playerData.locY -= speed * yV;
+      //console.log(player.playerData.locX < 5 && player.playerData.xVector < 0)
+      if (
+        (player.playerData.locX < 5 && player.playerData.xVector < 0) ||
+        (player.playerData.locX > settings.worldWidth && xV > 0)
+      ) {
+        player.playerData.locY -= speed * yV;
+        //console.log(player.playerData.locY);
+      } else if (
+        (player.playerData.locY < 5 && yV > 0) ||
+        (player.playerData.locY > settings.worldHeight && yV < 0)
+      ) {
+        player.playerData.locX += speed * xV;
+      } else {
+        player.playerData.locX += speed * xV;
+        player.playerData.locY -= speed * yV;
+      }
+
+      //console.log(player.playerData.locX)
+      let capturedOrb = checkForOrbCollisions(
+        player.playerData,
+        player.playerConfig,
+        orbs,
+        settings
+      );
+
+      capturedOrb
+        .then((data) => {
+          //then runs if resolve runs => a collision happened
+          //console.log(`Orb collision at ${data}`)
+          const orbData = {
+            orbIndex: data,
+            newOrb: orbs[data],
+          };
+          io.sockets.emit("orbSwitch", orbData);
+          // Every socket needs to know the leaderBoard has changed
+          io.sockets.emit("updateLeaderBoard", getLeaderBoard());
+        })
+        .catch(() => {
+          //catch runs if the reject runs => no collisions
+          //console.log("No orb collision")
+        });
+
+      // PLAYER COLLISION
+      let playerDeath = checkForPlayerCollisions(
+        player.playerData,
+        player.playerConfig,
+        players,
+        player.socketId
+      );
+
+      playerDeath
+        .then((data) => {
+          //console.log("collision");
+
+          // Every socket needs to know the leaderBoard has changed
+          io.sockets.emit("updateLeaderBoard", getLeaderBoard());
+        })
+        .catch(() => {});
     }
   });
 });
+
+function getLeaderBoard() {
+  // sort players in desc order
+  players.sort((a, b) => b.score - a.score);
+
+  const leaderBoard = players.map((curPlayer) => {
+    return {
+      name: curPlayer.name,
+      score: curPlayer.score,
+    };
+  });
+
+  return leaderBoard;
+}
 
 module.exports = io;
