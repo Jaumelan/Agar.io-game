@@ -8,7 +8,7 @@
 
 ## Description
 
-Agar.io game clone, using Jquery and socket.io
+Agar.io game clone is a multiplayer canvas game using Jquery and socket.io
 
 ## How to run
 
